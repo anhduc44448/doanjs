@@ -7,6 +7,8 @@ const {
   getBookingById,
   getRepeatPatients,
   getBookingStatsByStatus,
+  getRevenueByDateRange,
+  getMedicalHistoryByPatient,
 } = require("../controllers/bookingsController");
 
 // 1. Hiển thị lịch khám kèm thông tin bệnh nhân và bác sĩ
@@ -23,6 +25,12 @@ router.get("/repeat-patients", getRepeatPatients);
 
 // 14. Thống kê lịch khám theo từng trạng thái (dashboard)
 router.get("/stats/status", getBookingStatsByStatus);
+
+// 15. Tổng doanh thu từ lịch khám đã thanh toán trong khoảng thời gian
+router.get("/revenue", getRevenueByDateRange);
+
+// 16. Lịch sử khám bệnh đầy đủ của một bệnh nhân
+router.get("/medical-history/:patientId", getMedicalHistoryByPatient);
 
 // 9. Chi tiết một lịch khám — đặt cuối để không conflict với các route tĩnh trên
 router.get("/:id", getBookingById);
