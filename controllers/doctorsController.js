@@ -342,6 +342,190 @@ const getTopSpecialtyByRevenue = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// 18. Gợi ý bác sĩ cùng chuyên khoa nhưng khác khung giờ (khi slot bị kín)
+// GET /api/doctors/:doctorId/suggest?slotDate=2025-07-01&startTime=08:30
+const getSuggestedDoctors = async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+    const { slotDate, startTime } = req.query;
+
+    if (!slotDate || !startTime) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Thiếu slotDate hoặc startTime" });
+    }
+
+    const currentDoctor = await Doctor.findById(doctorId);
+    if (!currentDoctor) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy bác sĩ" });
+    }
+
+    const specialtyName = currentDoctor.specialty.name;
+    const date = new Date(slotDate);
+    const nextDay = new Date(date.getTime() + 24 * 60 * 60 * 1000);
+
+    // Bác sĩ cùng chuyên khoa, khác bác sĩ hiện tại
+    const sameDoctors = await Doctor.find({
+      _id: { $ne: doctorId },
+      "specialty.name": specialtyName,
+    });
+
+    // Slot đã bị đặt trong ngày đó
+    const bookedBookings = await Booking.find(
+      {
+        status: { $in: ["pending_payment", "confirmed"] },
+        "doctor.slot.slotDate": { $gte: date, $lt: nextDay },
+      },
+      { "doctor.slot.slotId": 1 },
+    );
+    const bookedSlotIds = bookedBookings.map((b) =>
+      b.doctor.slot.slotId.toString(),
+    );
+
+    // Lọc slot còn trống và khác giờ bị kín
+    const suggestions = [];
+    for (const doctor of sameDoctors) {
+      const availableSlots = doctor.timeSlots.filter((slot) => {
+        const sameDay =
+          new Date(slot.slotDate).toISOString().split("T")[0] === slotDate;
+        const notBooked = !bookedSlotIds.includes(slot._id.toString());
+        const diffTime = slot.startTime !== startTime;
+        return sameDay && notBooked && diffTime && slot.isActive;
+      });
+
+      if (availableSlots.length > 0) {
+        suggestions.push({
+          doctorId: doctor._id,
+          specialty: doctor.specialty.name,
+          basePrice: doctor.basePrice,
+          availableSlots: availableSlots.map((s) => ({
+            slotId: s._id,
+            startTime: s.startTime,
+            endTime: s.endTime,
+          })),
+        });
+      }
+    }
+
+    res
+      .status(200)
+      .json({ success: true, total: suggestions.length, data: suggestions });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 19. Kiểm tra 1 khung giờ cụ thể của bác sĩ đã được đặt chưa
+// GET /api/doctors/:doctorId/check-slot?slotId=665f000000000000000a0001
+const checkSlotAvailability = async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+    const { slotId } = req.query;
+
+    if (!slotId) {
+      return res.status(400).json({ success: false, message: "Thiếu slotId" });
+    }
+
+    // Kiểm tra slot có tồn tại trong doctor không
+    const doctor = await Doctor.findOne(
+      { _id: doctorId, "timeSlots._id": slotId },
+      { "timeSlots.$": 1 },
+    );
+
+    if (!doctor) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy slot" });
+    }
+
+    const slot = doctor.timeSlots[0];
+
+    // Kiểm tra slot đã bị đặt chưa (booking còn hiệu lực)
+    const existingBooking = await Booking.findOne({
+      "doctor.slot.slotId": slotId,
+      status: { $in: ["pending_payment", "confirmed"] },
+    });
+
+    res.status(200).json({
+      success: true,
+      slotId,
+      slotDate: slot.slotDate,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      isActive: slot.isActive,
+      isBooked: !!existingBooking,
+      status: existingBooking ? existingBooking.status : null,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 21. Lịch rảnh của bác sĩ theo chuyên khoa và theo ngày
+// GET /api/doctors/available-slots?specialty=Tim mạch&date=2025-07-01
+const getAvailableSlotsBySpecialtyAndDate = async (req, res) => {
+  try {
+    const { specialty, date } = req.query;
+
+    if (!date) {
+      return res.status(400).json({ success: false, message: "Thiếu date" });
+    }
+
+    const query = specialty
+      ? { "specialty.name": { $regex: specialty, $options: "i" } }
+      : {};
+    const doctors = await Doctor.find(query);
+
+    const targetDate = new Date(date);
+    const nextDay = new Date(date);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    // Slot đã bị đặt trong ngày đó
+    const bookedBookings = await Booking.find(
+      {
+        status: { $in: ["pending_payment", "confirmed"] },
+        "doctor.slot.slotDate": { $gte: targetDate, $lt: nextDay },
+      },
+      { "doctor.slot.slotId": 1 },
+    );
+    const bookedSlotIds = bookedBookings.map((b) =>
+      b.doctor.slot.slotId.toString(),
+    );
+
+    // Lọc slot rảnh
+    const result = [];
+    for (const doctor of doctors) {
+      const freeSlots = doctor.timeSlots.filter((slot) => {
+        const sameDay =
+          new Date(slot.slotDate).toISOString().split("T")[0] === date;
+        const notBooked = !bookedSlotIds.includes(slot._id.toString());
+        return sameDay && notBooked && slot.isActive;
+      });
+
+      if (freeSlots.length > 0) {
+        result.push({
+          doctorId: doctor._id,
+          specialty: doctor.specialty.name,
+          basePrice: doctor.basePrice,
+          freeSlots: freeSlots.map((s) => ({
+            slotId: s._id,
+            startTime: s.startTime,
+            endTime: s.endTime,
+          })),
+        });
+      }
+    }
+
+    res
+      .status(200)
+      .json({ success: true, date, total: result.length, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 module.exports = {
   getAvgWorkingTimeByDoctor,
   getLowFrequencySlots,
@@ -351,4 +535,7 @@ module.exports = {
   getDoctorRanking,
   getPeakSlots,
   getTopSpecialtyByRevenue,
+  getSuggestedDoctors,
+  checkSlotAvailability,
+  getAvailableSlotsBySpecialtyAndDate,
 };

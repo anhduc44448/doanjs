@@ -55,7 +55,14 @@ const MedicalRecordSchema = new mongoose.Schema(
 const BookingSchema = new mongoose.Schema({
   status: {
     type: String,
-    enum: ["pending_payment", "confirmed", "completed", "cancelled"],
+    enum: [
+      "pending_payment",
+      "confirmed",
+      "completed",
+      "cancelled",
+      "reschedule_request",
+      "no_show",
+    ],
     default: "pending_payment",
   },
   createdAt: { type: Date },

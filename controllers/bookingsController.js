@@ -1,5 +1,4 @@
 const Booking = require("../models/bookings");
-
 // 1. Hiển thị lịch khám của bác sĩ kèm thông tin bệnh nhân và khung giờ
 const getBookingsByDoctor = async (req, res) => {
   try {
@@ -101,7 +100,7 @@ const getBookingById = async (req, res) => {
     }
 
     // Lấy thêm thông tin chuyên khoa từ Doctor
-    const Doctor = require("../models/Doctor");
+    const Doctor = require("../models/doctors.js");
     const doctor = await Doctor.findById(booking.doctor.doctorId, {
       specialty: 1,
     });
@@ -177,6 +176,8 @@ const getBookingStatsByStatus = async (req, res) => {
       "confirmed",
       "completed",
       "cancelled",
+      "reschedule_request",
+      "no_show",
     ];
     const statsMap = Object.fromEntries(result.map((r) => [r._id, r.count]));
     const data = statusList.map((s) => ({
