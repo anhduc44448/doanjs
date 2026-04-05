@@ -1,4 +1,5 @@
 const Booking = require("../models/bookings");
+
 // 1. Hiển thị lịch khám của bác sĩ kèm thông tin bệnh nhân và khung giờ
 const getBookingsByDoctor = async (req, res) => {
   try {
@@ -89,7 +90,22 @@ const getNewPatientsPerDay = async (req, res) => {
   }
 };
 
-// 9. Chi tiết một lịch khám (đầy đủ: bệnh nhân, bác sĩ, chuyên khoa, thời gian, trạng thái, thanh toán)
+const parseSlotDateTime = (slotDate, startTime) => {
+  const date = new Date(slotDate);
+  const [hours, minutes] = startTime.split(":").map(Number);
+  date.setHours(hours, minutes, 0, 0);
+  return date;
+};
+
+const canViewBooking = (req, booking) => {
+  if (!req.user) return false;
+  if (req.user.role === "doctor") return true;
+  if (req.user.role === "patient") {
+    return booking.patient.userId.toString() === req.user.id;
+  }
+  return false;
+};
+
 const getBookingById = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
@@ -97,6 +113,10 @@ const getBookingById = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy lịch khám" });
+    }
+
+    if (!canViewBooking(req, booking)) {
+      return res.status(403).json({ success: false, message: "Forbidden" });
     }
 
     // Lấy thêm thông tin chuyên khoa từ Doctor
@@ -192,8 +212,41 @@ const getBookingStatsByStatus = async (req, res) => {
   }
 };
 
-// 15. Tổng doanh thu từ lịch khám đã thanh toán trong khoảng thời gian
-// Query: GET /api/bookings/revenue?from=2025-06-01&to=2025-06-30
+const updateBookingToRescheduleRequest = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy booking" });
+    }
+
+    if (booking.status === "completed" || booking.status === "cancelled") {
+      return res.status(400).json({
+        success: false,
+        message: "Không thể đổi lịch với booking đã hoàn tất hoặc đã hủy",
+      });
+    }
+
+    if (req.user.role === "patient") {
+      if (booking.patient.userId.toString() !== req.user.id) {
+        return res.status(403).json({ success: false, message: "Forbidden" });
+      }
+    }
+
+    booking.status = "reschedule_request";
+    await booking.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Booking đã được cập nhật sang yêu cầu đổi lịch",
+      data: booking,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 const getRevenueByDateRange = async (req, res) => {
   try {
     const { from, to } = req.query;
@@ -239,46 +292,45 @@ const getRevenueByDateRange = async (req, res) => {
   }
 };
 
-// 16. Lịch sử khám bệnh đầy đủ của một bệnh nhân (chẩn đoán + đơn thuốc + thanh toán)
-const getMedicalHistoryByPatient = async (req, res) => {
+const deleteExpiredNoShowBookings = async (req, res) => {
   try {
-    const { patientId } = req.params;
+    const now = new Date();
+    const candidateBookings = await Booking.find({
+      status: { $in: ["confirmed", "pending_payment"] },
+      "doctor.slot.slotDate": { $lte: now },
+    });
 
-    const bookings = await Booking.find(
-      {
-        "patient.userId": patientId,
-        status: "completed",
-      },
-      {
-        createdAt: 1,
-        status: 1,
-        "doctor.doctorId": 1,
-        "doctor.userId": 1,
-        "doctor.slot.slotDate": 1,
-        "doctor.slot.startTime": 1,
-        "doctor.slot.endTime": 1,
-        "payment.amount": 1,
-        "payment.isSuccessful": 1,
-        "payment.paymentDate": 1,
-        "medicalRecord.diagnosis": 1,
-        "medicalRecord.prescription": 1,
-        "medicalRecord.updatedDate": 1,
-      },
-    ).sort({ "doctor.slot.slotDate": -1 }); // mới nhất lên đầu
+    const expiredIds = candidateBookings
+      .filter((booking) => {
+        const slotDateTime = parseSlotDateTime(
+          booking.doctor.slot.slotDate,
+          booking.doctor.slot.startTime,
+        );
+        return slotDateTime < now;
+      })
+      .map((booking) => booking._id);
 
-    if (bookings.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Không có lịch sử khám bệnh" });
+    if (!expiredIds.length) {
+      return res.status(200).json({
+        success: true,
+        deletedCount: 0,
+        message: "Không có booking quá giờ cần xóa",
+      });
     }
 
-    res
-      .status(200)
-      .json({ success: true, total: bookings.length, data: bookings });
+    const result = await Booking.deleteMany({ _id: { $in: expiredIds } });
+    res.status(200).json({
+      success: true,
+      deletedCount: result.deletedCount,
+      deletedIds: expiredIds,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// 16. Lịch sử khám bệnh đầy đủ của một bệnh nhân (chẩn đoán + đơn thuốc + thanh toán)
+// Chuyển sang usersController để quản lý patient-related endpoints.
 module.exports = {
   getBookingsByDoctor,
   getUpcomingBookings,
@@ -287,5 +339,6 @@ module.exports = {
   getRepeatPatients,
   getBookingStatsByStatus,
   getRevenueByDateRange,
-  getMedicalHistoryByPatient,
+  updateBookingToRescheduleRequest,
+  deleteExpiredNoShowBookings,
 };
