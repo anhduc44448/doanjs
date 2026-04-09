@@ -57,6 +57,7 @@ const login = async (req, res) => {
   }
 };
 
+// Kiểm tra nếu user là doctor thì có thể xem tất cả, nếu là patient thì chỉ xem được thông tin của chính mình
 const canAccessUser = (req, targetUserId) => {
   if (!req.user) return false;
   if (req.user.role === "doctor") return true;
@@ -72,6 +73,7 @@ const getProfile = async (req, res) => {
   }
 };
 
+// 16. Lịch sử khám bệnh đầy đủ của một bệnh nhân (chẩn đoán + đơn thuốc + thanh toán)
 const getPatientMedicalHistory = async (req, res) => {
   try {
     if (!canAccessUser(req, req.params.userId)) {

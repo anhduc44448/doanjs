@@ -89,7 +89,7 @@ const getNewPatientsPerDay = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
+//
 const parseSlotDateTime = (slotDate, startTime) => {
   const date = new Date(slotDate);
   const [hours, minutes] = startTime.split(":").map(Number);
@@ -212,6 +212,7 @@ const getBookingStatsByStatus = async (req, res) => {
   }
 };
 
+// 20. cập nhật trạng thái booking sang "reschedule_request" khi bệnh nhân yêu cầu đổi lịch
 const updateBookingToRescheduleRequest = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
@@ -291,7 +292,7 @@ const getRevenueByDateRange = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
+// 3.	Xóa những bệnh nhân đặt lịch (booking) nhưng mà không đi khám (đã quá giờ)
 const deleteExpiredNoShowBookings = async (req, res) => {
   try {
     const now = new Date();
@@ -329,8 +330,6 @@ const deleteExpiredNoShowBookings = async (req, res) => {
   }
 };
 
-// 16. Lịch sử khám bệnh đầy đủ của một bệnh nhân (chẩn đoán + đơn thuốc + thanh toán)
-// Chuyển sang usersController để quản lý patient-related endpoints.
 module.exports = {
   getBookingsByDoctor,
   getUpcomingBookings,
