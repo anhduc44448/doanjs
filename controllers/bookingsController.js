@@ -1,4 +1,5 @@
 const Booking = require("../models/bookings");
+const Doctor = require("../models/doctors");
 
 // 1. Hiển thị lịch khám của bác sĩ kèm thông tin bệnh nhân và khung giờ
 const getBookingsByDoctor = async (req, res) => {
@@ -36,7 +37,7 @@ const getBookingsByDoctor = async (req, res) => {
   }
 };
 
-// 2. Danh sách bệnh nhân gần tới ngày đặt lịch khám (trong vòng 24h)
+//2. Danh sách bệnh nhân gần tới ngày đặt lịch khám (trong vòng 24h)
 const getUpcomingBookings = async (req, res) => {
   try {
     const now = new Date();
@@ -213,6 +214,41 @@ const getBookingStatsByStatus = async (req, res) => {
 };
 
 // 20. cập nhật trạng thái booking sang "reschedule_request" khi bệnh nhân yêu cầu đổi lịch
+// const updateBookingToRescheduleRequest = async (req, res) => {
+//   try {
+//     const booking = await Booking.findById(req.params.id);
+//     if (!booking) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Không tìm thấy booking" });
+//     }
+
+//     if (booking.status === "completed" || booking.status === "cancelled") {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Không thể đổi lịch với booking đã hoàn tất hoặc đã hủy",
+//       });
+//     }
+
+//     if (req.user.role === "patient") {
+//       if (booking.patient.userId.toString() !== req.user.id) {
+//         return res.status(403).json({ success: false, message: "Forbidden" });
+//       }
+//     }
+
+//     booking.status = "reschedule_request";
+//     await booking.save();
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Booking đã được cập nhật sang yêu cầu đổi lịch",
+//       data: booking,
+//     });
+//   } catch (error) {
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
 const updateBookingToRescheduleRequest = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
@@ -222,6 +258,7 @@ const updateBookingToRescheduleRequest = async (req, res) => {
         .json({ success: false, message: "Không tìm thấy booking" });
     }
 
+    // ❌ Không cho đổi nếu đã xong hoặc hủy
     if (booking.status === "completed" || booking.status === "cancelled") {
       return res.status(400).json({
         success: false,
@@ -229,18 +266,53 @@ const updateBookingToRescheduleRequest = async (req, res) => {
       });
     }
 
+    // 🔐 Check quyền
     if (req.user.role === "patient") {
       if (booking.patient.userId.toString() !== req.user.id) {
         return res.status(403).json({ success: false, message: "Forbidden" });
       }
     }
 
-    booking.status = "reschedule_request";
+    // 📥 Lấy slot mới từ request
+    const { newSlotId, newSlotDate, startTime, endTime } = req.body;
+
+    if (!newSlotId || !newSlotDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu thông tin slot mới",
+      });
+    }
+
+    // 🚨 (QUAN TRỌNG) kiểm tra slot mới có tồn tại & active không
+    const doctor = await Doctor.findOne({
+      _id: booking.doctor.doctorId,
+      "timeSlots._id": newSlotId,
+      "timeSlots.isActive": true,
+    });
+
+    if (!doctor) {
+      return res.status(400).json({
+        success: false,
+        message: "Slot không hợp lệ hoặc không hoạt động",
+      });
+    }
+
+    // 🔄 Cập nhật slot mới
+    booking.doctor.slot = {
+      slotId: newSlotId,
+      slotDate: newSlotDate,
+      startTime,
+      endTime,
+    };
+
+    // 🔄 đổi trạng thái
+    booking.status = "reschedule_request"; // hoặc vẫn giữ reschedule_request nếu cần duyệt
+
     await booking.save();
 
     res.status(200).json({
       success: true,
-      message: "Booking đã được cập nhật sang yêu cầu đổi lịch",
+      message: "Đổi lịch thành công",
       data: booking,
     });
   } catch (error) {

@@ -44,9 +44,6 @@ const { authorizeRoles } = require("../middleware/authorizeRoles");
  *         description: Forbidden
  */
 
-
-
-
 // 1. Hiển thị lịch khám kèm thông tin bệnh nhân và bác sĩ (doctor only)
 router.get(
   "/doctor/:doctorId",
@@ -54,7 +51,6 @@ router.get(
   authorizeRoles("doctor"),
   getBookingsByDoctor,
 );
-
 
 /**
  * @swagger
@@ -167,11 +163,39 @@ router.get(
   getRevenueByDateRange,
 );
 
+// /**
+//  * @swagger
+//  * /api/bookings/{id}/reschedule-request:
+//  *   put:
+//  *     summary: Cập nhật trạng thái booking thành yêu cầu đổi lịch
+//  *     tags: [Bookings]
+//  *     security:
+//  *       - bearerAuth: []
+//  *     parameters:
+//  *       - in: path
+//  *         name: id
+//  *         required: true
+//  *         schema:
+//  *           type: string
+//  *     responses:
+//  *       200:
+//  *         description: Cập nhật thành công
+//  *       404:
+//  *         description: Booking không tìm thấy
+//  */
+// // 20. Cập nhật trạng thái booking thành yêu cầu đổi lịch (patient hoặc doctor)
+// router.put(
+//   "/:id/reschedule-request",
+//   verifyToken,
+//   authorizeRoles("doctor", "patient"),
+//   updateBookingToRescheduleRequest,
+// );
+
 /**
  * @swagger
  * /api/bookings/{id}/reschedule-request:
  *   put:
- *     summary: Cập nhật trạng thái booking thành yêu cầu đổi lịch
+ *     summary: Đổi lịch khám (cập nhật slot mới cho booking)
  *     tags: [Bookings]
  *     security:
  *       - bearerAuth: []
@@ -179,15 +203,68 @@ router.get(
  *       - in: path
  *         name: id
  *         required: true
+ *         description: ID của booking cần đổi lịch
  *         schema:
  *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - newSlotId
+ *               - newSlotDate
+ *             properties:
+ *               newSlotId:
+ *                 type: string
+ *                 example: "665f0000000000000000a002"
+ *               newSlotDate:
+ *                 type: string
+ *                 format: date
+ *                 example: "2025-07-05"
+ *               startTime:
+ *                 type: string
+ *                 example: "09:00"
+ *               endTime:
+ *                 type: string
+ *                 example: "09:30"
  *     responses:
  *       200:
- *         description: Cập nhật thành công
+ *         description: Đổi lịch thành công
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: "Đổi lịch thành công"
+ *               data:
+ *                 _id: "665f0000000000000000b001"
+ *                 status: "rescheduled"
+ *       400:
+ *         description: Dữ liệu không hợp lệ hoặc slot không khả dụng
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: false
+ *               message: "Slot không hợp lệ hoặc không hoạt động"
+ *       403:
+ *         description: Không có quyền thực hiện
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: false
+ *               message: "Forbidden"
  *       404:
- *         description: Booking không tìm thấy
+ *         description: Không tìm thấy booking
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: false
+ *               message: "Không tìm thấy booking"
+ *       500:
+ *         description: Lỗi server
  */
-// 20. Cập nhật trạng thái booking thành yêu cầu đổi lịch (patient hoặc doctor)
+// // 20. Cập nhật trạng thái booking thành yêu cầu đổi lịch (patient hoặc doctor)
 router.put(
   "/:id/reschedule-request",
   verifyToken,

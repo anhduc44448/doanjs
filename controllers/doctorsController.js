@@ -418,6 +418,119 @@ const getSuggestedDoctors = async (req, res) => {
   }
 };
 
+// // =======================
+// // 2. GET ALL DOCTORS
+// // =======================
+// const getDoctors = async (req, res) => {
+//   try {
+//     const { specialty } = req.query;
+
+//     const query = specialty
+//       ? { "specialty.name": { $regex: specialty, $options: "i" } }
+//       : {};
+
+//     const doctors = await Doctor.find(query);
+
+//     res.status(200).json({
+//       success: true,
+//       total: doctors.length,
+//       data: doctors,
+//     });
+//   } catch (error) {
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+// 3. GET DOCTOR BY ID
+// =======================
+// const getDoctorById = async (req, res) => {
+//   try {
+//     const { doctorId } = req.params;
+
+//     const doctor = await Doctor.findById(doctorId);
+
+//     if (!doctor) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Không tìm thấy bác sĩ",
+//       });
+//     }
+
+//     res.status(200).json({
+//       success: true,
+//       data: doctor,
+//     });
+//   } catch (error) {
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+// =======================
+// 4. UPDATE DOCTOR
+// =======================
+const updateDoctor = async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+
+    const doctor = await Doctor.findByIdAndUpdate(doctorId, req.body, {
+      new: true,
+    });
+
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy bác sĩ",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Cập nhật thành công",
+      data: doctor,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =======================
+// 5. DELETE DOCTOR
+// =======================
+const deleteDoctor = async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+
+    // check có booking không
+    const hasBooking = await Booking.findOne({
+      "doctor.doctorId": doctorId,
+      status: { $ne: "cancelled" },
+    });
+
+    if (hasBooking) {
+      return res.status(400).json({
+        success: false,
+        message: "Không thể xóa bác sĩ đã có lịch khám",
+      });
+    }
+
+    const doctor = await Doctor.findByIdAndDelete(doctorId);
+
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy bác sĩ",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Xóa bác sĩ thành công",
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // 19. Kiểm tra 1 khung giờ cụ thể của bác sĩ đã được đặt chưa
 // GET /api/doctors/:doctorId/check-slot?slotId=665f000000000000000a0001
 const checkSlotAvailability = async (req, res) => {
